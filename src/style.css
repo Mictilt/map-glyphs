@@ -214,3 +214,8 @@ button:hover {
   color: #888;
   font-size: 11px;
 }
+.titleBox {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}

@@ -19,8 +19,9 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <div id="map"></div>
 
   <div class="panel">
-    <h1>Funchal — screenshot-style basemap</h1>
-
+    <div class="titleBox">Funchal — screenshot-style basemap <span class="toggleWindow"><button id="toggleWindow"> - </button></span></div>
+   
+    <div id="window" style="display: block;">
     <div class="row">
       <label>Water</label>
       <input id="water" type="color" value="#d2d2d2" />
@@ -121,6 +122,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
     </div>
 
     <div class="status" id="status">Loading vector map…</div>
+    </div>
   </div>
 `;
 
@@ -158,20 +160,22 @@ const DEFAULTS = {
   labels: true,
   pois: false,
 
-  lng: -16.9049040,
+  lng: -16.904904,
   lat: 32.6479946,
   zoom: 16.42,
   bearing: 0,
   pitch: 0,
 
   markerLng: -16.9026988,
-  markerLat: 32.6479930,
+  markerLat: 32.647993,
   markerSize: 0.45,
 
   outlines: false,
   roundedStreets: true,
   waterways: true,
 };
+
+let windowOpen = true;
 
 const MARKER_REFERENCE_ZOOM = 14.1; // zoom at which markerSize = "100%"
 
@@ -934,6 +938,21 @@ async function createMap() {
   });
 }
 
+function toggleWindow() {
+  windowOpen = !windowOpen;
+  if (windowOpen) {
+    document.getElementById("toggleWindow")!.textContent = " - ";
+    document.getElementById("window")!.style.display = "block";
+  } else {
+    document.getElementById("toggleWindow")!.textContent = " + ";
+    document.getElementById("window")!.style.display = "none";
+  }
+}
+
+(document.getElementById("toggleWindow") as HTMLButtonElement).addEventListener(
+  "click",
+  toggleWindow
+);
 /*
  * ================================================================
  * FONT DISCOVERY
