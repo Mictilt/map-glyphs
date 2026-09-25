@@ -269,8 +269,8 @@ function readInitialStateFromURL() {
   ]) {
     const value = params.get(key);
 
-    if (isValidHex(value)) {
-      state[key] = value.toLowerCase();
+    if (value && isValidHex(value)) {
+      state[key as keyof typeof state] = value.toLowerCase() as never;
     }
   }
 
@@ -322,7 +322,7 @@ function readInitialStateFromURL() {
     state.pois = pois === "1";
   }
 
-  const numberParam = (name, fallback, min, max) => {
+  const numberParam = (name: string, fallback: number, min: number, max: number) => {
     const value = Number(params.get(name));
 
     if (Number.isFinite(value) && value >= min && value <= max) {
@@ -480,7 +480,9 @@ function updateShareURL() {
 let urlUpdateTimer: number | null = null;
 
 function scheduleURLUpdate() {
-  clearTimeout(urlUpdateTimer);
+  if (urlUpdateTimer) {
+    clearTimeout(urlUpdateTimer);
+  }
   urlUpdateTimer = setTimeout(updateShareURL, 100);
 }
 
@@ -766,7 +768,7 @@ function applyStyle() {
     }
   }
 
-  document.getElementById("status").textContent =
+  (document.getElementById("status") as HTMLDivElement).textContent =
     "Loaded • vector tiles • shareable style";
 }
 
@@ -819,7 +821,7 @@ function addMarker() {
   marker.on("dragend", () => {
     container.style.cursor = "grab";
     scheduleURLUpdate();
-    document.getElementById("status").textContent =
+    (document.getElementById("status") as HTMLDivElement).textContent =
       "Marker moved — share link updated";
   });
   map.on("zoom", updateMarkerScale);
@@ -854,7 +856,7 @@ async function createMap() {
   // the offending highway-shield / road_shield layers, since you're
   // hiding all non-street symbol layers anyway.
   style.layers = style.layers.filter(
-    (l) =>
+    (l: LayerSpecification) =>
       ![
         "highway-shield-non-us",
         "highway-shield-us-interstate",
@@ -887,9 +889,11 @@ async function createMap() {
     new NavigationControl({ visualizePitch: false }),
     "bottom-right"
   );
-  map.on("click", (e) => {
-    console.log(map.queryRenderedFeatures(e.point));
-  });
+  // map.on("click", (e) => {
+  //   if (map) {
+  //     console.log(map.queryRenderedFeatures(e.point));
+  //   }
+  // });
   map.addControl(
     new ScaleControl({ maxWidth: 100, unit: "metric" }),
     "bottom-left"
@@ -903,7 +907,7 @@ async function createMap() {
   });
 
   map.on("styledata", () => {
-    if (map.isStyleLoaded()) {
+    if (map && map.isStyleLoaded()) {
       applyStyle();
     }
   });
@@ -916,7 +920,7 @@ async function createMap() {
   map.on("error", (event) => {
     console.error("MapLibre error:", event);
 
-    document.getElementById("status").textContent =
+    (document.getElementById("status") as HTMLDivElement).textContent =
       "Map error — check the browser console.";
   });
 }
@@ -951,7 +955,7 @@ function getCachedFonts() {
   }
 }
 
-function cacheFonts(fonts) {
+function cacheFonts(fonts: string[]) {
   try {
     localStorage.setItem(
       FONT_CACHE_KEY,
@@ -960,7 +964,7 @@ function cacheFonts(fonts) {
   } catch (error) {}
 }
 
-function populateFontSelect(fonts) {
+function populateFontSelect(fonts: string[]) {
   const select = document.getElementById("font") as HTMLSelectElement;
 
   select.innerHTML = "";
@@ -1023,9 +1027,9 @@ async function discoverFonts() {
   const entries = await response.json();
 
   const fonts = entries
-    .filter((entry) => entry.type === "dir" && entry.name)
-    .map((entry) => entry.name)
-    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+    .filter((entry: any) => entry.type === "dir" && entry.name)
+    .map((entry: any) => entry.name)
+    .sort((a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: "base" }));
 
   cacheFonts(fonts);
   populateFontSelect(fonts);
@@ -1056,26 +1060,26 @@ const colorBindings = [
 ];
 
 for (const [id, key] of colorBindings) {
-  document.getElementById(id).addEventListener("input", (event) => {
-    theme[key] = (event.target as HTMLInputElement).value;
+  (document.getElementById(id) as HTMLInputElement).addEventListener("input", (event) => {
+    theme[key as keyof typeof theme] = (event.target as HTMLInputElement).value as never;
     applyStyle();
     scheduleURLUpdate();
   });
 }
 
-document.getElementById("markerSize").addEventListener("input", (event) => {
+(document.getElementById("markerSize") as HTMLInputElement).addEventListener("input", (event) => {
   theme.markerSize = Number((event.target as HTMLInputElement).value);
   updateMarkerScale();
   scheduleURLUpdate();
 });
 
-document.getElementById("streetSize").addEventListener("input", (event) => {
+(document.getElementById("streetSize") as HTMLInputElement).addEventListener("input", (event) => {
   theme.streetSize = Number((event.target as HTMLInputElement).value);
   applyStyle();
   scheduleURLUpdate();
 });
 
-document.getElementById("font").addEventListener("change", (event) => {
+(document.getElementById("font") as HTMLSelectElement).addEventListener("change", (event) => {
   if (!(event.target as HTMLSelectElement).value) {
     return;
   }
@@ -1085,31 +1089,29 @@ document.getElementById("font").addEventListener("change", (event) => {
   scheduleURLUpdate();
 });
 
-document.getElementById("labels").addEventListener("change", () => {
+(document.getElementById("labels") as HTMLInputElement).addEventListener("change", () => {
   applyStyle();
   scheduleURLUpdate();
 });
 
-document.getElementById("pois").addEventListener("change", () => {
+(document.getElementById("pois") as HTMLInputElement).addEventListener("change", () => {
   applyStyle();
   scheduleURLUpdate();
 });
 
-document.getElementById("outlines").addEventListener("change", (event) => {
+(document.getElementById("outlines") as HTMLInputElement).addEventListener("change", (event) => {
   theme.outlines = (event.target as HTMLInputElement).checked;
   applyStyle();
   scheduleURLUpdate();
 });
 
-document
-  .getElementById("roundedStreets")
-  .addEventListener("change", (event) => {
+(document.getElementById("roundedStreets") as HTMLInputElement).addEventListener("change", (event) => {
     theme.roundedStreets = (event.target as HTMLInputElement).checked;
     applyStyle();
     scheduleURLUpdate();
   });
 
-document.getElementById("waterways").addEventListener("change", (event) => {
+(document.getElementById("waterways") as HTMLInputElement).addEventListener("change", (event) => {
   theme.waterways = (event.target as HTMLInputElement).checked;
   applyStyle();
   scheduleURLUpdate();
@@ -1132,7 +1134,7 @@ document.getElementById("waterways").addEventListener("change", (event) => {
  *
  */
 
-document.getElementById("reset").addEventListener("click", () => {
+(document.getElementById("reset") as HTMLButtonElement).addEventListener("click", () => {
   theme.land = DEFAULTS.land;
   theme.water = DEFAULTS.water;
   theme.buildings = DEFAULTS.buildings;
@@ -1201,7 +1203,7 @@ document.getElementById("reset").addEventListener("click", () => {
    */
   updateShareURL();
 
-  document.getElementById("status").textContent = "Reset to original settings";
+  (document.getElementById("status") as HTMLDivElement).textContent = "Reset to original settings";
 });
 
 /*
@@ -1210,21 +1212,21 @@ document.getElementById("reset").addEventListener("click", () => {
  * ================================================================
  */
 
-document.getElementById("copyLink").addEventListener("click", async () => {
+(document.getElementById("copyLink") as HTMLButtonElement).addEventListener("click", async () => {
   updateShareURL();
 
   const value = (document.getElementById("shareUrl") as HTMLInputElement).value;
 
   try {
     await navigator.clipboard.writeText(value);
-    document.getElementById("status").textContent =
+    (document.getElementById("status") as HTMLDivElement).textContent =
       "Share link copied to clipboard";
   } catch (error) {
     const input = document.getElementById("shareUrl") as HTMLInputElement;
 
     input.select();
 
-    document.getElementById("status").textContent =
+    (document.getElementById("status") as HTMLDivElement).textContent =
       "Select/copy the URL manually";
   }
 });
@@ -1239,7 +1241,7 @@ syncControlsFromState();
 
 createMap().catch((error) => {
   console.error(error);
-  document.getElementById("status")!.textContent =
+  (document.getElementById("status") as HTMLDivElement).textContent =
     "Map error — check the browser console.";
 });
 
