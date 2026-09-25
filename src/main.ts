@@ -1,10 +1,20 @@
-
 import "./style.css";
 import "maplibre-gl/dist/maplibre-gl.css";
-import * as maplibregl from "maplibre-gl";
-import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
+import {
+  Map as MapLibreMap,
+  Marker,
+  NavigationControl,
+  ScaleControl,
+  setWorkerUrl,
+} from "maplibre-gl";
+import type {
+  AllLayoutProperties,
+  AllPaintProperties,
+  LayerSpecification,
+} from "maplibre-gl";
+import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 
-maplibregl.setWorkerUrl(workerUrl);
+setWorkerUrl(workerUrl);
 document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <div id="map"></div>
 
@@ -52,6 +62,17 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
         value="12"
       />
     </div>
+    <div class="row">
+      <label>Marker size</label>
+      <input
+        id="markerSize"
+        type="range"
+        min="0.05"
+        max="10"
+        step="0.05"
+        value="0.05"
+      />
+    </div>
 
     <div class="row">
       <label>Font</label>
@@ -69,6 +90,18 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       <label>
         <input id="pois" type="checkbox" />
         POIs
+      </label>
+      <label>
+        <input id="outlines" type="checkbox" />
+        outlines
+      </label>
+      <label>
+        <input id="roundedStreets" type="checkbox" />
+        rounded streets ends/joins
+      </label>
+      <label>
+        <input id="waterways" type="checkbox" />
+        waterways
       </label>
     </div>
 
@@ -133,8 +166,14 @@ const DEFAULTS = {
 
   markerLng: -16.9028234,
   markerLat: 32.6475008,
-  markerHeading: 182
+  markerSize: 0.05,
+
+  outlines: false,
+  roundedStreets: true,
+  waterways: false,
 };
+
+const MARKER_REFERENCE_ZOOM = 14.1; // zoom at which markerSize = "100%"
 
 const STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 
@@ -157,13 +196,16 @@ const theme = {
   streetText: DEFAULTS.streetText,
 
   streetHalo: "#eeeeee",
-
+  outlines: DEFAULTS.outlines,
+  roundedStreets: DEFAULTS.roundedStreets,
+  waterways: DEFAULTS.waterways,
   streetSize: DEFAULTS.streetSize,
-  font: [DEFAULTS.font]
+  font: [DEFAULTS.font],
+  markerSize: DEFAULTS.markerSize,
 };
 
-let map: maplibregl.Map | null = null;
-let marker = null;
+let map: MapLibreMap | null = null;
+let marker: Marker | null = null;
 
 /*
  * ================================================================
@@ -203,7 +245,11 @@ function readInitialStateFromURL() {
 
     markerLng: DEFAULTS.markerLng,
     markerLat: DEFAULTS.markerLat,
-    markerHeading: DEFAULTS.markerHeading
+    markerSize: DEFAULTS.markerSize,
+
+    outlines: DEFAULTS.outlines,
+    roundedStreets: DEFAULTS.roundedStreets,
+    waterways: DEFAULTS.waterways,
   };
 
   /*
@@ -219,7 +265,7 @@ function readInitialStateFromURL() {
     "buildings",
     "roads",
     "minorRoads",
-    "streetText"
+    "streetText",
   ]) {
     const value = params.get(key);
 
@@ -238,6 +284,30 @@ function readInitialStateFromURL() {
 
   if (font) {
     state.font = font;
+  }
+
+  const markerSize = Number(params.get("mSize"));
+
+  if (Number.isFinite(markerSize) && markerSize >= 0.05 && markerSize <= 10) {
+    state.markerSize = markerSize;
+  }
+
+  const outlines = params.get("outlines");
+
+  if (outlines === "0" || outlines === "1") {
+    state.outlines = outlines === "1";
+  }
+
+  const roundedStreets = params.get("roundedStreets");
+
+  if (roundedStreets === "0" || roundedStreets === "1") {
+    state.roundedStreets = roundedStreets === "1";
+  }
+
+  const waterways = params.get("waterways");
+
+  if (waterways === "0" || waterways === "1") {
+    state.waterways = waterways === "1";
   }
 
   const labels = params.get("labels");
@@ -274,12 +344,7 @@ function readInitialStateFromURL() {
 
   state.markerLng = numberParam("mLng", DEFAULTS.markerLng, -180, 180);
   state.markerLat = numberParam("mLat", DEFAULTS.markerLat, -90, 90);
-  state.markerHeading = numberParam(
-    "mHeading",
-    DEFAULTS.markerHeading,
-    -180,
-    360
-  );
+  state.markerSize = numberParam("mSize", DEFAULTS.markerSize, 1, 25);
 
   return state;
 }
@@ -290,16 +355,32 @@ const INITIAL_STATE = readInitialStateFromURL();
  * Apply URL/default state to the controls.
  */
 function syncControlsFromState() {
-  (document.getElementById("land") as HTMLInputElement).value = INITIAL_STATE.land;
-  (document.getElementById("water") as HTMLInputElement).value = INITIAL_STATE.water;
-  (document.getElementById("buildings") as HTMLInputElement).value = INITIAL_STATE.buildings;
-  (document.getElementById("roads") as HTMLInputElement).value = INITIAL_STATE.roads;
-  (document.getElementById("minorRoads") as HTMLInputElement).value = INITIAL_STATE.minorRoads;
-  (document.getElementById("streetText") as HTMLInputElement).value = INITIAL_STATE.streetText;
-  (document.getElementById("streetSize") as HTMLInputElement).value = INITIAL_STATE.streetSize;
-  (document.getElementById("labels") as HTMLInputElement).checked = INITIAL_STATE.labels;
-  (document.getElementById("pois") as HTMLInputElement).checked = INITIAL_STATE.pois;
-
+  (document.getElementById("land") as HTMLInputElement).value =
+    INITIAL_STATE.land;
+  (document.getElementById("water") as HTMLInputElement).value =
+    INITIAL_STATE.water;
+  (document.getElementById("buildings") as HTMLInputElement).value =
+    INITIAL_STATE.buildings;
+  (document.getElementById("roads") as HTMLInputElement).value =
+    INITIAL_STATE.roads;
+  (document.getElementById("minorRoads") as HTMLInputElement).value =
+    INITIAL_STATE.minorRoads;
+  (document.getElementById("streetText") as HTMLInputElement).value =
+    INITIAL_STATE.streetText;
+  (document.getElementById("streetSize") as HTMLInputElement).value =
+    INITIAL_STATE.streetSize.toString();
+  (document.getElementById("labels") as HTMLInputElement).checked =
+    INITIAL_STATE.labels;
+  (document.getElementById("pois") as HTMLInputElement).checked =
+    INITIAL_STATE.pois;
+  (document.getElementById("outlines") as HTMLInputElement).checked =
+    INITIAL_STATE.outlines;
+  (document.getElementById("roundedStreets") as HTMLInputElement).checked =
+    INITIAL_STATE.roundedStreets;
+  (document.getElementById("waterways") as HTMLInputElement).checked =
+    INITIAL_STATE.waterways;
+  (document.getElementById("markerSize") as HTMLInputElement).value =
+    INITIAL_STATE.markerSize.toString();
   theme.land = INITIAL_STATE.land;
   theme.water = INITIAL_STATE.water;
   theme.buildings = INITIAL_STATE.buildings;
@@ -307,7 +388,11 @@ function syncControlsFromState() {
   theme.minorRoads = INITIAL_STATE.minorRoads;
   theme.streetText = INITIAL_STATE.streetText;
   theme.streetSize = INITIAL_STATE.streetSize;
+  theme.outlines = INITIAL_STATE.outlines;
+  theme.roundedStreets = INITIAL_STATE.roundedStreets;
+  theme.waterways = INITIAL_STATE.waterways;
   theme.font = [INITIAL_STATE.font];
+  theme.markerSize = INITIAL_STATE.markerSize;
 }
 
 /*
@@ -327,13 +412,21 @@ function buildShareURL() {
   params.set("streetText", theme.streetText);
   params.set("streetSize", String(theme.streetSize));
   params.set("font", theme.font[0]);
-
+  params.set("mSize", String(theme.markerSize));
+  params.set("outlines", theme.outlines ? "1" : "0");
+  params.set("roundedStreets", theme.roundedStreets ? "1" : "0");
+  params.set("waterways", theme.waterways ? "1" : "0");
   params.set(
     "labels",
     (document.getElementById("labels") as HTMLInputElement).checked ? "1" : "0"
   );
 
-  params.set("pois", (document.getElementById("pois") as HTMLInputElement).checked ? "1" : "0");
+  params.set(
+    "pois",
+    (document.getElementById("pois") as HTMLInputElement).checked ? "1" : "0"
+  );
+
+  params.set("mSize", String(theme.markerSize));
 
   if (map) {
     const center = map.getCenter();
@@ -354,11 +447,9 @@ function buildShareURL() {
 
     params.set("mLng", markerLngLat.lng.toFixed(7));
     params.set("mLat", markerLngLat.lat.toFixed(7));
-    params.set("mHeading", String(marker.getRotation()));
   } else {
     params.set("mLng", String(DEFAULTS.markerLng));
     params.set("mLat", String(DEFAULTS.markerLat));
-    params.set("mHeading", String(DEFAULTS.markerHeading));
   }
 
   const url = new URL(window.location.href);
@@ -367,7 +458,13 @@ function buildShareURL() {
 
   return url.toString();
 }
-
+function darken(hex: string, amount: number) {
+  const num = parseInt(hex.slice(1), 16);
+  const r = Math.max(0, (num >> 16) - Math.round(255 * amount));
+  const g = Math.max(0, ((num >> 8) & 0xff) - Math.round(255 * amount));
+  const b = Math.max(0, (num & 0xff) - Math.round(255 * amount));
+  return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+}
 function updateShareURL() {
   const url = buildShareURL();
 
@@ -393,7 +490,11 @@ function scheduleURLUpdate() {
  * ================================================================
  */
 
-function setPaint(id: string, property: keyof maplibregl.AllPaintProperties, value: any) {
+function setPaint(
+  id: string,
+  property: keyof AllPaintProperties,
+  value: AllPaintProperties[keyof AllPaintProperties]
+) {
   try {
     if (map && map.getLayer(id)) {
       map.setPaintProperty(id, property, value);
@@ -401,7 +502,11 @@ function setPaint(id: string, property: keyof maplibregl.AllPaintProperties, val
   } catch (error) {}
 }
 
-function setLayout(id: string, property: keyof maplibregl.AllLayoutProperties, value: any) {
+function setLayout(
+  id: string,
+  property: keyof AllLayoutProperties,
+  value: AllLayoutProperties[keyof AllLayoutProperties]
+) {
   try {
     if (map && map.getLayer(id)) {
       map.setLayoutProperty(id, property, value);
@@ -409,13 +514,15 @@ function setLayout(id: string, property: keyof maplibregl.AllLayoutProperties, v
   } catch (error) {}
 }
 
-function sourceLayer(layer: maplibregl.AnyLayer) {
-  return layer["source-layer"] || "";
+function sourceLayer(layer: { ["source-layer"]?: string }) {
+  return layer["source-layer"] ?? "";
 }
 
-function classifySymbol(layer: maplibregl.AnyLayer) {
+function classifySymbol(layer: LayerSpecification) {
   const id = layer.id.toLowerCase();
-  const source = sourceLayer(layer).toLowerCase();
+  const source = sourceLayer(
+    layer as { ["source-layer"]?: string }
+  ).toLowerCase();
 
   const isStreet =
     source === "transportation_name" ||
@@ -432,7 +539,7 @@ function classifySymbol(layer: maplibregl.AnyLayer) {
 let flattenedBuildings = false;
 
 function flattenBuildings() {
-  if (flattenedBuildings) {
+  if (flattenedBuildings || !map) {
     return;
   }
 
@@ -458,12 +565,16 @@ function applyStyle() {
 
   flattenBuildings();
 
-  const showLabels = (document.getElementById("labels") as HTMLInputElement).checked;
-  const showPois = (document.getElementById("pois") as HTMLInputElement).checked;
+  const showLabels = (document.getElementById("labels") as HTMLInputElement)
+    .checked;
+  const showPois = (document.getElementById("pois") as HTMLInputElement)
+    .checked;
 
   for (const layer of map.getStyle().layers || []) {
     const id = layer.id;
-    const source = sourceLayer(layer).toLowerCase();
+    const source = sourceLayer(
+      layer as { ["source-layer"]?: string }
+    ).toLowerCase();
 
     /*
      * ------------------------------------------------------------
@@ -472,7 +583,7 @@ function applyStyle() {
      */
 
     if (layer.type === "symbol") {
-      const classification = classifySymbol(layer);
+      const classification = classifySymbol(layer as LayerSpecification);
 
       if (classification.isStreet) {
         setLayout(id, "visibility", showLabels ? "visible" : "none");
@@ -483,7 +594,7 @@ function applyStyle() {
           setLayout(id, "text-field", [
             "coalesce",
             ["get", "name"],
-            ["get", "ref"]
+            ["get", "ref"],
           ]);
         }
 
@@ -524,9 +635,25 @@ function applyStyle() {
 
     if (layer.type === "fill") {
       if (source === "water") {
-        setPaint(id, "fill-color", theme.water);
+        setPaint(id, "fill-color", [
+          "match",
+          ["get", "class"],
+          ["river", "lake"],
+          theme.waterways ? theme.water : theme.land,
+          theme.water,
+        ]);
+      } else if (id === "landcover_wetland") {
+        // Dry/seasonal riverbeds (like Funchal's ribeiras) are tagged
+        // "wetland" and rendered with a hatch pattern, not as "water" —
+        // hide it outright since fill-color can't override the pattern.
+        setLayout(id, "visibility", theme.waterways ? "visible" : "none");
       } else if (source === "building") {
         setPaint(id, "fill-color", theme.buildings);
+        setPaint(
+          id,
+          "fill-outline-color",
+          theme.outlines ? darken(theme.buildings, 0.15) : theme.buildings
+        );
       } else if (
         source === "land" ||
         source === "landuse" ||
@@ -557,6 +684,35 @@ function applyStyle() {
       continue;
     }
 
+    // ------------------------------------------------------------
+    // ROAD CASINGS ("outlines") — a subtle rim slightly darker than
+    // the road itself, like Google's faint street edges
+    // ------------------------------------------------------------
+    if (
+      layer.type === "line" &&
+      (id.toLowerCase().includes("casing") ||
+        id.toLowerCase().includes("outline"))
+    ) {
+      setLayout(id, "visibility", theme.outlines ? "visible" : "none");
+      setPaint(id, "line-color", darken(theme.roads, 0.12));
+    }
+
+    // ------------------------------------------------------------
+    // ROUNDED STREET ENDS/JOINS
+    // ------------------------------------------------------------
+    if (layer.type === "line" && source === "transportation") {
+      setLayout(id, "line-cap", theme.roundedStreets ? "round" : "butt");
+      setLayout(id, "line-join", theme.roundedStreets ? "round" : "miter");
+    }
+
+    // ------------------------------------------------------------
+    // WATERWAYS (rivers/streams) — distinct from land, doesn't
+    // vanish into the lake/ocean fill
+    // ------------------------------------------------------------
+    if (layer.type === "line" && source === "waterway") {
+      setLayout(id, "visibility", theme.waterways ? "visible" : "none");
+      setPaint(id, "line-color", darken(theme.land, 0.28));
+    }
     /*
      * ------------------------------------------------------------
      * ROADS
@@ -581,7 +737,7 @@ function applyStyle() {
         theme.minorRoads,
         "service",
         theme.minorRoads,
-        theme.minorRoads
+        theme.minorRoads,
       ]);
     }
 
@@ -623,38 +779,61 @@ function applyStyle() {
  * Dragging updates the shareable URL, same as panning/zooming.
  */
 
+let markerInner: HTMLImageElement | null = null;
+
 function addMarker() {
-  const el = document.createElement("img");
+  if (!map) return;
 
-  el.src = "./assets/marker.svg";
-  el.style.width = "20px";
-  el.style.height = "32px";
-  el.style.display = "block";
-  el.style.cursor = "grab";
-  el.alt = "marker";
+  // Outer element — MapLibre owns this element's `transform` entirely.
+  const container = document.createElement("div");
+  container.style.display = "block";
+  container.style.cursor = "grab";
 
-  marker = new maplibregl.Marker({
-    element: el,
+  // Inner element — we own this element's `transform` entirely.
+  const img = document.createElement("img");
+  img.src = "/src/assets/marker.svg";
+  img.style.width = `20px`;
+  img.style.height = `35px`;
+  img.style.display = "block";
+  img.style.transformOrigin = "50% 100%";
+  img.alt = "marker";
+
+  container.appendChild(img);
+  markerInner = img;
+
+  marker = new Marker({
+    element: container,
     anchor: "bottom",
-    rotation: INITIAL_STATE.markerHeading,
     rotationAlignment: "map",
     pitchAlignment: "map",
-    draggable: true
+    draggable: true,
   })
     .setLngLat([INITIAL_STATE.markerLng, INITIAL_STATE.markerLat])
     .addTo(map);
 
+  updateMarkerScale();
+
   marker.on("dragstart", () => {
-    el.style.cursor = "grabbing";
+    container.style.cursor = "grabbing";
   });
-
   marker.on("dragend", () => {
-    el.style.cursor = "grab";
+    container.style.cursor = "grab";
     scheduleURLUpdate();
-
     document.getElementById("status").textContent =
       "Marker moved — share link updated";
   });
+  map.on("zoom", updateMarkerScale);
+  updateMarkerScale();
+}
+
+function updateMarkerScale() {
+  if (!map || !markerInner) return;
+
+  const userScale = theme.markerSize;
+  const zoomFactor = Math.pow(2, map.getZoom() - MARKER_REFERENCE_ZOOM);
+  const scale = userScale * zoomFactor;
+
+  markerInner.style.transform = `scale(${scale})`;
 }
 
 async function createMap() {
@@ -671,7 +850,19 @@ async function createMap() {
    */
   style.glyphs = GLYPH_URL;
 
-  map = new maplibregl.Map({
+  // Optional: silence the null-ref_length filter warnings by dropping
+  // the offending highway-shield / road_shield layers, since you're
+  // hiding all non-street symbol layers anyway.
+  style.layers = style.layers.filter(
+    (l) =>
+      ![
+        "highway-shield-non-us",
+        "highway-shield-us-interstate",
+        "road_shield_us",
+      ].includes(l.id)
+  );
+
+  map = new MapLibreMap({
     container: "map",
     style,
 
@@ -684,21 +875,23 @@ async function createMap() {
     attributionControl: {
       compact: false,
       customAttribution: [
-        '<a href="https://www.openfreemap.org">OpenFreeMap</a>'
-      ]
-    }
+        '<a href="https://www.openfreemap.org">OpenFreeMap</a>',
+      ],
+    },
   });
 
   map.setMaxPitch(0);
   map.touchPitch.disable();
 
   map.addControl(
-    new maplibregl.NavigationControl({ visualizePitch: false }),
+    new NavigationControl({ visualizePitch: false }),
     "bottom-right"
   );
-
+  map.on("click", (e) => {
+    console.log(map.queryRenderedFeatures(e.point));
+  });
   map.addControl(
-    new maplibregl.ScaleControl({ maxWidth: 100, unit: "metric" }),
+    new ScaleControl({ maxWidth: 100, unit: "metric" }),
     "bottom-left"
   );
 
@@ -720,7 +913,7 @@ async function createMap() {
    */
   map.on("moveend", scheduleURLUpdate);
 
-  map.on("error", event => {
+  map.on("error", (event) => {
     console.error("MapLibre error:", event);
 
     document.getElementById("status").textContent =
@@ -812,14 +1005,15 @@ async function discoverFonts() {
      */
     if (cached.includes(INITIAL_STATE.font)) {
       theme.font = [INITIAL_STATE.font];
-      document.getElementById("font").value = INITIAL_STATE.font;
+      (document.getElementById("font") as HTMLSelectElement).value =
+        INITIAL_STATE.font;
     }
 
     return;
   }
 
   const response = await fetch(FONT_LIST_URL, {
-    headers: { Accept: "application/vnd.github+json" }
+    headers: { Accept: "application/vnd.github+json" },
   });
 
   if (!response.ok) {
@@ -829,8 +1023,8 @@ async function discoverFonts() {
   const entries = await response.json();
 
   const fonts = entries
-    .filter(entry => entry.type === "dir" && entry.name)
-    .map(entry => entry.name)
+    .filter((entry) => entry.type === "dir" && entry.name)
+    .map((entry) => entry.name)
     .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
 
   cacheFonts(fonts);
@@ -841,7 +1035,8 @@ async function discoverFonts() {
    */
   if (fonts.includes(INITIAL_STATE.font)) {
     theme.font = [INITIAL_STATE.font];
-    document.getElementById("font").value = INITIAL_STATE.font;
+    (document.getElementById("font") as HTMLSelectElement).value =
+      INITIAL_STATE.font;
   }
 }
 
@@ -857,29 +1052,35 @@ const colorBindings = [
   ["buildings", "buildings"],
   ["roads", "roads"],
   ["minorRoads", "minorRoads"],
-  ["streetText", "streetText"]
+  ["streetText", "streetText"],
 ];
 
 for (const [id, key] of colorBindings) {
-  document.getElementById(id).addEventListener("input", event => {
-    theme[key] = event.target.value;
+  document.getElementById(id).addEventListener("input", (event) => {
+    theme[key] = (event.target as HTMLInputElement).value;
     applyStyle();
     scheduleURLUpdate();
   });
 }
 
-document.getElementById("streetSize").addEventListener("input", event => {
-  theme.streetSize = Number(event.target.value);
+document.getElementById("markerSize").addEventListener("input", (event) => {
+  theme.markerSize = Number((event.target as HTMLInputElement).value);
+  updateMarkerScale();
+  scheduleURLUpdate();
+});
+
+document.getElementById("streetSize").addEventListener("input", (event) => {
+  theme.streetSize = Number((event.target as HTMLInputElement).value);
   applyStyle();
   scheduleURLUpdate();
 });
 
-document.getElementById("font").addEventListener("change", event => {
-  if (!event.target.value) {
+document.getElementById("font").addEventListener("change", (event) => {
+  if (!(event.target as HTMLSelectElement).value) {
     return;
   }
 
-  theme.font = [event.target.value];
+  theme.font = [(event.target as HTMLSelectElement).value];
   applyStyle();
   scheduleURLUpdate();
 });
@@ -894,6 +1095,25 @@ document.getElementById("pois").addEventListener("change", () => {
   scheduleURLUpdate();
 });
 
+document.getElementById("outlines").addEventListener("change", (event) => {
+  theme.outlines = (event.target as HTMLInputElement).checked;
+  applyStyle();
+  scheduleURLUpdate();
+});
+
+document
+  .getElementById("roundedStreets")
+  .addEventListener("change", (event) => {
+    theme.roundedStreets = (event.target as HTMLInputElement).checked;
+    applyStyle();
+    scheduleURLUpdate();
+  });
+
+document.getElementById("waterways").addEventListener("change", (event) => {
+  theme.waterways = (event.target as HTMLInputElement).checked;
+  applyStyle();
+  scheduleURLUpdate();
+});
 /*
  * ================================================================
  * RESET
@@ -921,20 +1141,36 @@ document.getElementById("reset").addEventListener("click", () => {
   theme.streetText = DEFAULTS.streetText;
   theme.streetSize = DEFAULTS.streetSize;
   theme.font = [DEFAULTS.font];
+  theme.markerSize = DEFAULTS.markerSize;
+  (document.getElementById("labels") as HTMLInputElement).checked =
+    DEFAULTS.labels;
+  (document.getElementById("pois") as HTMLInputElement).checked = DEFAULTS.pois;
+  (document.getElementById("land") as HTMLInputElement).value = DEFAULTS.land;
+  (document.getElementById("water") as HTMLInputElement).value = DEFAULTS.water;
+  (document.getElementById("buildings") as HTMLInputElement).value =
+    DEFAULTS.buildings;
+  (document.getElementById("roads") as HTMLInputElement).value = DEFAULTS.roads;
+  (document.getElementById("minorRoads") as HTMLInputElement).value =
+    DEFAULTS.minorRoads;
+  (document.getElementById("streetText") as HTMLInputElement).value =
+    DEFAULTS.streetText;
+  (document.getElementById("streetSize") as HTMLInputElement).value =
+    DEFAULTS.streetSize.toString();
+  (document.getElementById("markerSize") as HTMLInputElement).value =
+    DEFAULTS.markerSize.toString();
+  (document.getElementById("outlines") as HTMLInputElement).checked =
+    DEFAULTS.outlines;
+  (document.getElementById("roundedStreets") as HTMLInputElement).checked =
+    DEFAULTS.roundedStreets;
+  (document.getElementById("waterways") as HTMLInputElement).checked =
+    DEFAULTS.waterways;
+  const fontSelect = document.getElementById("font") as HTMLSelectElement;
 
-  document.getElementById("labels").checked = DEFAULTS.labels;
-  document.getElementById("pois").checked = DEFAULTS.pois;
-  document.getElementById("land").value = DEFAULTS.land;
-  document.getElementById("water").value = DEFAULTS.water;
-  document.getElementById("buildings").value = DEFAULTS.buildings;
-  document.getElementById("roads").value = DEFAULTS.roads;
-  document.getElementById("minorRoads").value = DEFAULTS.minorRoads;
-  document.getElementById("streetText").value = DEFAULTS.streetText;
-  document.getElementById("streetSize").value = DEFAULTS.streetSize;
-
-  const fontSelect = document.getElementById("font");
-
-  if ([...fontSelect.options].some(option => option.value === DEFAULTS.font)) {
+  if (
+    Array.from(fontSelect.options).some(
+      (option: HTMLOptionElement) => option.value === DEFAULTS.font
+    )
+  ) {
     fontSelect.value = DEFAULTS.font;
   }
 
@@ -943,13 +1179,12 @@ document.getElementById("reset").addEventListener("click", () => {
       center: [DEFAULTS.lng, DEFAULTS.lat],
       zoom: DEFAULTS.zoom,
       bearing: DEFAULTS.bearing,
-      pitch: 0
+      pitch: 0,
     });
   }
 
   if (marker) {
     marker.setLngLat([DEFAULTS.markerLng, DEFAULTS.markerLat]);
-    marker.setRotation(DEFAULTS.markerHeading);
   }
 
   /*
@@ -978,14 +1213,14 @@ document.getElementById("reset").addEventListener("click", () => {
 document.getElementById("copyLink").addEventListener("click", async () => {
   updateShareURL();
 
-  const value = document.getElementById("shareUrl").value;
+  const value = (document.getElementById("shareUrl") as HTMLInputElement).value;
 
   try {
     await navigator.clipboard.writeText(value);
     document.getElementById("status").textContent =
       "Share link copied to clipboard";
   } catch (error) {
-    const input = document.getElementById("shareUrl");
+    const input = document.getElementById("shareUrl") as HTMLInputElement;
 
     input.select();
 
@@ -1002,9 +1237,15 @@ document.getElementById("copyLink").addEventListener("click", async () => {
 
 syncControlsFromState();
 
-Promise.all([createMap(), discoverFonts()]).catch(error => {
+createMap().catch((error) => {
   console.error(error);
+  document.getElementById("status")!.textContent =
+    "Map error — check the browser console.";
+});
 
-  document.getElementById("status").textContent =
-    "Startup error — check the browser console.";
+discoverFonts().catch((error) => {
+  console.error(error);
+  // Font list failed — don't touch the map status, just leave the
+  // font <select> disabled/showing "Loading glyphs…" or fall back
+  // to the default font silently.
 });
