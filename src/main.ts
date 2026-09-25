@@ -158,19 +158,19 @@ const DEFAULTS = {
   labels: true,
   pois: false,
 
-  lng: -16.9087,
-  lat: 32.6487,
-  zoom: 14.1,
+  lng: -16.9049040,
+  lat: 32.6479946,
+  zoom: 16.42,
   bearing: 0,
   pitch: 0,
 
-  markerLng: -16.9028234,
-  markerLat: 32.6475008,
-  markerSize: 0.05,
+  markerLng: -16.9026988,
+  markerLat: 32.6479930,
+  markerSize: 0.45,
 
   outlines: false,
   roundedStreets: true,
-  waterways: false,
+  waterways: true,
 };
 
 const MARKER_REFERENCE_ZOOM = 14.1; // zoom at which markerSize = "100%"
@@ -219,6 +219,10 @@ function isValidHex(value: string): boolean {
 
 function readInitialStateFromURL() {
   const params = new URLSearchParams(window.location.search);
+
+  if (params.size === 0) {
+    return DEFAULTS;
+  }
 
   /*
    * Start with the ORIGINAL settings.
@@ -322,7 +326,12 @@ function readInitialStateFromURL() {
     state.pois = pois === "1";
   }
 
-  const numberParam = (name: string, fallback: number, min: number, max: number) => {
+  const numberParam = (
+    name: string,
+    fallback: number,
+    min: number,
+    max: number
+  ) => {
     const value = Number(params.get(name));
 
     if (Number.isFinite(value) && value >= min && value <= max) {
@@ -350,7 +359,7 @@ function readInitialStateFromURL() {
 }
 
 const INITIAL_STATE = readInitialStateFromURL();
-
+console.log("INITIAL_STATE", INITIAL_STATE);
 /*
  * Apply URL/default state to the controls.
  */
@@ -1029,7 +1038,9 @@ async function discoverFonts() {
   const fonts = entries
     .filter((entry: any) => entry.type === "dir" && entry.name)
     .map((entry: any) => entry.name)
-    .sort((a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+    .sort((a: string, b: string) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" })
+    );
 
   cacheFonts(fonts);
   populateFontSelect(fonts);
@@ -1060,62 +1071,89 @@ const colorBindings = [
 ];
 
 for (const [id, key] of colorBindings) {
-  (document.getElementById(id) as HTMLInputElement).addEventListener("input", (event) => {
-    theme[key as keyof typeof theme] = (event.target as HTMLInputElement).value as never;
-    applyStyle();
-    scheduleURLUpdate();
-  });
+  (document.getElementById(id) as HTMLInputElement).addEventListener(
+    "input",
+    (event) => {
+      theme[key as keyof typeof theme] = (event.target as HTMLInputElement)
+        .value as never;
+      applyStyle();
+      scheduleURLUpdate();
+    }
+  );
 }
 
-(document.getElementById("markerSize") as HTMLInputElement).addEventListener("input", (event) => {
-  theme.markerSize = Number((event.target as HTMLInputElement).value);
-  updateMarkerScale();
-  scheduleURLUpdate();
-});
-
-(document.getElementById("streetSize") as HTMLInputElement).addEventListener("input", (event) => {
-  theme.streetSize = Number((event.target as HTMLInputElement).value);
-  applyStyle();
-  scheduleURLUpdate();
-});
-
-(document.getElementById("font") as HTMLSelectElement).addEventListener("change", (event) => {
-  if (!(event.target as HTMLSelectElement).value) {
-    return;
+(document.getElementById("markerSize") as HTMLInputElement).addEventListener(
+  "input",
+  (event) => {
+    theme.markerSize = Number((event.target as HTMLInputElement).value);
+    updateMarkerScale();
+    scheduleURLUpdate();
   }
+);
 
-  theme.font = [(event.target as HTMLSelectElement).value];
-  applyStyle();
-  scheduleURLUpdate();
-});
-
-(document.getElementById("labels") as HTMLInputElement).addEventListener("change", () => {
-  applyStyle();
-  scheduleURLUpdate();
-});
-
-(document.getElementById("pois") as HTMLInputElement).addEventListener("change", () => {
-  applyStyle();
-  scheduleURLUpdate();
-});
-
-(document.getElementById("outlines") as HTMLInputElement).addEventListener("change", (event) => {
-  theme.outlines = (event.target as HTMLInputElement).checked;
-  applyStyle();
-  scheduleURLUpdate();
-});
-
-(document.getElementById("roundedStreets") as HTMLInputElement).addEventListener("change", (event) => {
-    theme.roundedStreets = (event.target as HTMLInputElement).checked;
+(document.getElementById("streetSize") as HTMLInputElement).addEventListener(
+  "input",
+  (event) => {
+    theme.streetSize = Number((event.target as HTMLInputElement).value);
     applyStyle();
     scheduleURLUpdate();
-  });
+  }
+);
 
-(document.getElementById("waterways") as HTMLInputElement).addEventListener("change", (event) => {
-  theme.waterways = (event.target as HTMLInputElement).checked;
+(document.getElementById("font") as HTMLSelectElement).addEventListener(
+  "change",
+  (event) => {
+    if (!(event.target as HTMLSelectElement).value) {
+      return;
+    }
+
+    theme.font = [(event.target as HTMLSelectElement).value];
+    applyStyle();
+    scheduleURLUpdate();
+  }
+);
+
+(document.getElementById("labels") as HTMLInputElement).addEventListener(
+  "change",
+  () => {
+    applyStyle();
+    scheduleURLUpdate();
+  }
+);
+
+(document.getElementById("pois") as HTMLInputElement).addEventListener(
+  "change",
+  () => {
+    applyStyle();
+    scheduleURLUpdate();
+  }
+);
+
+(document.getElementById("outlines") as HTMLInputElement).addEventListener(
+  "change",
+  (event) => {
+    theme.outlines = (event.target as HTMLInputElement).checked;
+    applyStyle();
+    scheduleURLUpdate();
+  }
+);
+
+(
+  document.getElementById("roundedStreets") as HTMLInputElement
+).addEventListener("change", (event) => {
+  theme.roundedStreets = (event.target as HTMLInputElement).checked;
   applyStyle();
   scheduleURLUpdate();
 });
+
+(document.getElementById("waterways") as HTMLInputElement).addEventListener(
+  "change",
+  (event) => {
+    theme.waterways = (event.target as HTMLInputElement).checked;
+    applyStyle();
+    scheduleURLUpdate();
+  }
+);
 /*
  * ================================================================
  * RESET
@@ -1133,8 +1171,7 @@ for (const [id, key] of colorBindings) {
  *   /your-map.html
  *
  */
-
-(document.getElementById("reset") as HTMLButtonElement).addEventListener("click", () => {
+function defaultStyles() {
   theme.land = DEFAULTS.land;
   theme.water = DEFAULTS.water;
   theme.buildings = DEFAULTS.buildings;
@@ -1203,8 +1240,15 @@ for (const [id, key] of colorBindings) {
    */
   updateShareURL();
 
-  (document.getElementById("status") as HTMLDivElement).textContent = "Reset to original settings";
-});
+  (document.getElementById("status") as HTMLDivElement).textContent =
+    "Reset to original settings";
+}
+(document.getElementById("reset") as HTMLButtonElement).addEventListener(
+  "click",
+  () => {
+    defaultStyles();
+  }
+);
 
 /*
  * ================================================================
@@ -1212,24 +1256,28 @@ for (const [id, key] of colorBindings) {
  * ================================================================
  */
 
-(document.getElementById("copyLink") as HTMLButtonElement).addEventListener("click", async () => {
-  updateShareURL();
+(document.getElementById("copyLink") as HTMLButtonElement).addEventListener(
+  "click",
+  async () => {
+    updateShareURL();
 
-  const value = (document.getElementById("shareUrl") as HTMLInputElement).value;
+    const value = (document.getElementById("shareUrl") as HTMLInputElement)
+      .value;
 
-  try {
-    await navigator.clipboard.writeText(value);
-    (document.getElementById("status") as HTMLDivElement).textContent =
-      "Share link copied to clipboard";
-  } catch (error) {
-    const input = document.getElementById("shareUrl") as HTMLInputElement;
+    try {
+      await navigator.clipboard.writeText(value);
+      (document.getElementById("status") as HTMLDivElement).textContent =
+        "Share link copied to clipboard";
+    } catch (error) {
+      const input = document.getElementById("shareUrl") as HTMLInputElement;
 
-    input.select();
+      input.select();
 
-    (document.getElementById("status") as HTMLDivElement).textContent =
-      "Select/copy the URL manually";
+      (document.getElementById("status") as HTMLDivElement).textContent =
+        "Select/copy the URL manually";
+    }
   }
-});
+);
 
 /*
  * ================================================================
