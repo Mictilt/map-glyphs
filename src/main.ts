@@ -357,7 +357,7 @@ function readInitialStateFromURL() {
 
   state.markerLng = numberParam("mLng", DEFAULTS.markerLng, -180, 180);
   state.markerLat = numberParam("mLat", DEFAULTS.markerLat, -90, 90);
-  state.markerSize = numberParam("mSize", DEFAULTS.markerSize, 1, 25);
+  state.markerSize = numberParam("mSize", DEFAULTS.markerSize, 0.05, 10);
 
   return state;
 }
@@ -438,8 +438,6 @@ function buildShareURL() {
     "pois",
     (document.getElementById("pois") as HTMLInputElement).checked ? "1" : "0"
   );
-
-  params.set("mSize", String(theme.markerSize));
 
   if (map) {
     const center = map.getCenter();
