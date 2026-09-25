@@ -185,7 +185,7 @@ const FONT_LIST_URL =
 
 const FONT_CACHE_KEY = "mictilt-map-glyph-fonts-v1";
 
-const FONT_CACHE_TTL = 24 * 60 * 60 * 1000;
+const FONT_CACHE_TTL = 1 * 60 * 60 * 1000;
 
 const theme = {
   land: DEFAULTS.land,
