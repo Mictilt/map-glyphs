@@ -806,7 +806,7 @@ function addMarker() {
 
   // Inner element — we own this element's `transform` entirely.
   const img = document.createElement("img");
-  img.src = "/src/assets/marker.svg";
+  img.src = "/marker.svg";
   img.style.width = `20px`;
   img.style.height = `35px`;
   img.style.display = "block";
